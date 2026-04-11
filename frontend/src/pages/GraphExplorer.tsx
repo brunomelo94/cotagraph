@@ -1,9 +1,19 @@
 import { useState, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
+import { Plus, Minus, Maximize2 } from "lucide-react";
 import { api } from "@/api/client";
 import { GraphCanvas, GraphCanvasHandle } from "@/components/GraphCanvas";
 import { InfoDrawer } from "@/components/InfoDrawer";
+import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { GraphResponse, GraphNode, GraphEdge, SelectedNodeInfo } from "@/api/types";
 
 export function GraphExplorer() {
@@ -45,196 +55,178 @@ export function GraphExplorer() {
   const entityKey = entityId?.replace(/^[^_]+_/, "") ?? "";
 
   return (
-    <div style={{ maxWidth: 1400, margin: "0 auto", padding: "1.5rem 1rem" }}>
+    <div className="flex min-h-screen flex-col">
       {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 16,
-          marginBottom: "1rem",
-        }}
-      >
-        <Link
-          to="/"
-          style={{ color: "#4f46e5", textDecoration: "none", fontSize: 14 }}
-        >
-          ← Início
-        </Link>
-        <h1 style={{ fontSize: "1.1rem", fontWeight: 700, margin: 0 }}>
-          Grafo —{" "}
-          <span style={{ color: "#64748b", fontWeight: 400 }}>
-            {entityType}
-          </span>{" "}
-          <span style={{ fontFamily: "monospace", color: "#4f46e5" }}>
-            {entityKey}
-          </span>
-        </h1>
-      </div>
+      <header className="border-b border-zinc-200 bg-white px-8 py-6">
+        <div className="max-w-none">
+          <div className="flex items-center gap-3">
+            <Link
+              to="/"
+              className="text-sm text-zinc-500 hover:text-zinc-800 transition-colors"
+            >
+              ← Início
+            </Link>
+            <span className="text-zinc-300">/</span>
+            <h1 className="text-2xl font-semibold text-zinc-900">
+              Grafo —{" "}
+              <span className="font-normal text-zinc-500">{entityType}</span>{" "}
+              <span className="font-mono text-indigo-600">{entityKey}</span>
+            </h1>
+          </div>
+          <p className="mt-1 text-sm text-zinc-500">
+            Explorador de conexões entre entidades parlamentares
+          </p>
+        </div>
+      </header>
 
-      {/* Controls row */}
-      <div
-        style={{
-          display: "flex",
-          gap: 20,
-          marginBottom: "0.75rem",
-          flexWrap: "wrap",
-          alignItems: "center",
-        }}
-      >
-        <label style={labelStyle}>
-          Profundidade: <strong>{depth}</strong>
-          <input
-            type="range"
-            min={1}
-            max={3}
-            value={depth}
-            onChange={(e) => setDepth(Number(e.target.value))}
-            style={{ marginLeft: 8, width: 70 }}
-          />
-        </label>
+      {/* Controls bar */}
+      <div className="border-b border-zinc-200 bg-white px-8 py-4">
+        <div className="flex flex-wrap items-center gap-6">
+          {/* Depth slider */}
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-zinc-700">
+              Profundidade:{" "}
+              <strong className="text-zinc-900">{depth}</strong>
+            </span>
+            <Slider
+              value={[depth]}
+              onValueChange={(v) => setDepth(v[0])}
+              min={1}
+              max={3}
+              step={1}
+              className="w-24"
+            />
+          </div>
 
-        <label style={labelStyle}>
-          Máx. nós: <strong>{maxNodes}</strong>
-          <input
-            type="range"
-            min={20}
-            max={300}
-            step={10}
-            value={maxNodes}
-            onChange={(e) => setMaxNodes(Number(e.target.value))}
-            style={{ marginLeft: 8, width: 90 }}
-          />
-        </label>
+          {/* Max nodes slider */}
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-zinc-700">
+              Máx. nós:{" "}
+              <strong className="text-zinc-900">{maxNodes}</strong>
+            </span>
+            <Slider
+              value={[maxNodes]}
+              onValueChange={(v) => setMaxNodes(v[0])}
+              min={20}
+              max={300}
+              step={10}
+              className="w-28"
+            />
+          </div>
 
-        <label style={labelStyle}>
-          Ano:
-          <select
-            value={year ?? ""}
-            onChange={(e) =>
-              setYear(e.target.value ? Number(e.target.value) : undefined)
-            }
-            style={{ ...selectStyle, marginLeft: 8 }}
-          >
-            <option value="">Todos</option>
-            {[2019, 2020, 2021, 2022, 2023, 2024].map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
-        </label>
+          {/* Year select */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-zinc-700">Ano:</span>
+            <Select
+              value={year ? String(year) : "todos"}
+              onValueChange={(v) =>
+                setYear(v === "todos" ? undefined : Number(v))
+              }
+            >
+              <SelectTrigger className="w-28 border-zinc-300">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos</SelectItem>
+                {[2019, 2020, 2021, 2022, 2023, 2024].map((y) => (
+                  <SelectItem key={y} value={String(y)}>
+                    {y}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        {/* Zoom controls */}
-        <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
-          <button
-            onClick={() => canvasRef.current?.zoomIn()}
-            style={iconBtn}
-            title="Aproximar"
-          >
-            +
-          </button>
-          <button
-            onClick={() => canvasRef.current?.zoomOut()}
-            style={iconBtn}
-            title="Afastar"
-          >
-            −
-          </button>
-          <button
-            onClick={() => canvasRef.current?.fit()}
-            style={{ ...iconBtn, fontSize: 11, padding: "0 8px" }}
-            title="Ajustar ao ecrã"
-          >
-            Fit
-          </button>
+          {/* Zoom controls — pushed to the right */}
+          <div className="ml-auto flex items-center gap-1.5">
+            <Button
+              variant="outline"
+              size="icon-sm"
+              className="border-zinc-300"
+              onClick={() => canvasRef.current?.zoomIn()}
+              title="Aproximar"
+            >
+              <Plus className="size-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              className="border-zinc-300"
+              onClick={() => canvasRef.current?.zoomOut()}
+              title="Afastar"
+            >
+              <Minus className="size-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              className="border-zinc-300"
+              onClick={() => canvasRef.current?.fit()}
+              title="Ajustar ao ecrã"
+            >
+              <Maximize2 className="size-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* Status bar */}
       {data && (
-        <div
-          style={{
-            fontSize: 12,
-            color: "#94a3b8",
-            marginBottom: 8,
-            display: "flex",
-            gap: 16,
-          }}
-        >
-          <span>{data.nodes.length} nós</span>
-          <span>{data.edges.length} arestas</span>
-          {data.nodes.length >= maxNodes && (
-            <span style={{ color: "#f59e0b" }}>
-              limite atingido — aumente Máx. nós para ver mais
+        <div className="border-b border-zinc-200 bg-zinc-50 px-8 py-2">
+          <div className="flex flex-wrap items-center gap-4 text-xs text-zinc-400">
+            <span>{data.nodes.length} nós</span>
+            <span>{data.edges.length} arestas</span>
+            {data.nodes.length >= maxNodes && (
+              <span className="text-amber-500">
+                limite atingido — aumente Máx. nós para ver mais
+              </span>
+            )}
+            <span>
+              Passe o mouse sobre uma aresta para ver o valor · Clique em um nó
+              para ver detalhes
             </span>
-          )}
-          <span>
-            Passe o mouse sobre uma aresta para ver o valor · Clique em um nó
-            para ver detalhes
-          </span>
+          </div>
         </div>
       )}
 
-      {isLoading && (
-        <div
-          style={{
-            height: 600,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#94a3b8",
-            border: "1px solid #e2e8f0",
-            borderRadius: 8,
-          }}
-        >
-          Carregando grafo...
-        </div>
-      )}
+      {/* Graph area */}
+      <div className="flex-1 px-8 py-6">
+        {isLoading && (
+          <div className="flex h-[600px] items-center justify-center rounded-lg border border-zinc-200 text-zinc-400">
+            Carregando grafo...
+          </div>
+        )}
 
-      {error && (
-        <div
-          style={{
-            height: 200,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#ef4444",
-          }}
-        >
-          Entidade não encontrada ou erro ao carregar grafo.
-        </div>
-      )}
+        {error && (
+          <div className="flex h-48 items-center justify-center text-red-500">
+            Entidade não encontrada ou erro ao carregar grafo.
+          </div>
+        )}
 
-      {/* Graph canvas + info drawer in flex row */}
-      {data && (
-        <div
-          style={{
-            display: "flex",
-            border: "1px solid #e2e8f0",
-            borderRadius: 8,
-            overflow: "hidden",
-          }}
-        >
-          <GraphCanvas
-            ref={canvasRef}
-            nodes={data.nodes}
-            edges={data.edges}
-            centerId={data.center_id}
-            onNodeSelect={handleNodeSelect}
-          />
-          {selectedNode && (
-            <InfoDrawer
-              node={selectedNode.node}
-              allEdges={selectedNode.allEdges}
-              allNodes={selectedNode.allNodes}
-              onClose={() => setSelectedNode(null)}
-            />
-          )}
-        </div>
-      )}
+        {data && (
+          <>
+            <div className="flex overflow-hidden rounded-lg border border-zinc-200">
+              <GraphCanvas
+                ref={canvasRef}
+                nodes={data.nodes}
+                edges={data.edges}
+                centerId={data.center_id}
+                onNodeSelect={handleNodeSelect}
+              />
+              {selectedNode && (
+                <InfoDrawer
+                  node={selectedNode.node}
+                  allEdges={selectedNode.allEdges}
+                  allNodes={selectedNode.allNodes}
+                  onClose={() => setSelectedNode(null)}
+                />
+              )}
+            </div>
 
-      {data && <Legend />}
+            <Legend />
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -248,26 +240,12 @@ function Legend() {
     { color: "#8b5cf6", label: "Município" },
   ];
   return (
-    <div style={{ display: "flex", gap: 20, marginTop: 10, flexWrap: "wrap" }}>
+    <div className="mt-3 flex flex-wrap gap-5">
       {items.map(({ color, label }) => (
-        <div
-          key={label}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            fontSize: 13,
-            color: "#64748b",
-          }}
-        >
+        <div key={label} className="flex items-center gap-1.5 text-sm text-zinc-500">
           <div
-            style={{
-              width: 10,
-              height: 10,
-              borderRadius: "50%",
-              background: color,
-              flexShrink: 0,
-            }}
+            className="size-2.5 shrink-0 rounded-full"
+            style={{ background: color }}
           />
           {label}
         </div>
@@ -275,31 +253,3 @@ function Legend() {
     </div>
   );
 }
-
-const labelStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  fontSize: 14,
-  color: "#374151",
-  gap: 0,
-};
-const selectStyle: React.CSSProperties = {
-  padding: "0.3rem 0.6rem",
-  border: "1px solid #e2e8f0",
-  borderRadius: 6,
-  background: "#fff",
-  fontSize: 14,
-};
-const iconBtn: React.CSSProperties = {
-  width: 32,
-  height: 32,
-  border: "1px solid #e2e8f0",
-  borderRadius: 6,
-  background: "#fff",
-  cursor: "pointer",
-  fontSize: 16,
-  fontWeight: 700,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-};
