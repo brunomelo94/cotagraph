@@ -15,7 +15,7 @@ async def top_spenders(
         query = """
             MATCH (d:Deputy)-[r:SENT_AMENDMENT {year: $year}]->(b:Beneficiary)
             RETURN d.camara_id AS camara_id, d.name AS name, d.party AS party,
-                   d.state AS state, sum(r.amount_brl) AS total_brl
+                   COALESCE(d.state, '') AS state, sum(r.amount_brl) AS total_brl
             ORDER BY total_brl DESC LIMIT $limit
         """
         result = await neo4j.run(query, year=year, limit=limit)
@@ -23,7 +23,7 @@ async def top_spenders(
         query = """
             MATCH (d:Deputy)-[r:SENT_AMENDMENT]->(b:Beneficiary)
             RETURN d.camara_id AS camara_id, d.name AS name, d.party AS party,
-                   d.state AS state, sum(r.amount_brl) AS total_brl
+                   COALESCE(d.state, '') AS state, sum(r.amount_brl) AS total_brl
             ORDER BY total_brl DESC LIMIT $limit
         """
         result = await neo4j.run(query, limit=limit)
@@ -45,16 +45,33 @@ async def top_spenders(
     return {"items": items}
 
 
-def _parse_entity_id(entity_id: str) -> tuple[str, str, str]:
-    """Return (label, key_prop, key_value) from an entity_id like deputy_4497."""
+def _parse_entity_id(entity_id: str) -> tuple[str, str | None, str | int | dict]:
+    """Return (label, key_prop, key_value) from an entity_id like deputy_4497.
+
+    For municipality, key_prop is None and key_value is {"uf": ..., "name": ...}.
+    """
     mapping = {
         "deputy": ("Deputy", "camara_id"),
         "beneficiary": ("Beneficiary", "cnpj_cpf"),
         "party": ("Party", "acronym"),
+        "state": ("State", "uf"),
     }
     prefix, _, key = entity_id.partition("_")
-    if prefix not in mapping or not key:
+    if not key:
         raise HTTPException(status_code=400, detail=f"Invalid entity_id format: {entity_id}")
+
+    # Municipality uses a composite key: municipality_{uf}_{name}
+    if prefix == "municipality":
+        parts = key.split("_", 1)
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid municipality entity_id: {entity_id}"
+            )
+        return "Municipality", None, {"uf": parts[0], "name": parts[1]}
+
+    if prefix not in mapping:
+        raise HTTPException(status_code=400, detail=f"Invalid entity_id format: {entity_id}")
+
     label, prop = mapping[prefix]
     # camara_id is an integer in Neo4j
     value: str | int = int(key) if prefix == "deputy" else key
@@ -71,10 +88,19 @@ async def subgraph(
 ):
     label, prop, value = _parse_entity_id(entity_id)
 
+    # Build center MATCH clause — municipality uses composite key, others use single prop
+    if prop is None:
+        center_match = f"MATCH (center:{label} {{uf: $uf, name: $name}})"
+        run_params: dict = dict(depth=depth, max_nodes=max_nodes, year=year,
+                                uf=value["uf"], name=value["name"])  # type: ignore[index]
+    else:
+        center_match = f"MATCH (center:{label} {{{prop}: $value}})"
+        run_params = dict(value=value, depth=depth, max_nodes=max_nodes, year=year)
+
     # Collect nodes and relationships up to `depth` hops from center,
     # optionally filtering SENT_AMENDMENT edges to a specific year.
     query = f"""
-        MATCH (center:{label} {{{prop}: $value}})
+        {center_match}
         CALL apoc.path.subgraphAll(center, {{
             maxLevel: $depth,
             limit: $max_nodes
@@ -86,33 +112,40 @@ async def subgraph(
                   ELSE relationships END AS relationships
         RETURN nodes, relationships
     """
-    result = await neo4j.run(query, value=value, depth=depth, max_nodes=max_nodes, year=year)
-    record = await result.single()
 
-    if record is None:
-        raise HTTPException(status_code=404, detail=f"Entity {entity_id} not found")
+    try:
+        result = await neo4j.run(query, **run_params)
+        record = await result.single()
 
-    raw_nodes = record["nodes"]
-    raw_rels = record["relationships"]
+        if record is None:
+            raise HTTPException(status_code=404, detail=f"Entity {entity_id} not found")
 
-    # Build Cytoscape-compatible output
-    seen_node_ids = set()
-    nodes = []
-    for node in raw_nodes:
-        if len(nodes) >= max_nodes:
-            break
-        node_data = _node_to_cytoscape(node)
-        if node_data["data"]["id"] not in seen_node_ids:
-            seen_node_ids.add(node_data["data"]["id"])
-            nodes.append(node_data)
+        raw_nodes = record["nodes"]
+        raw_rels = record["relationships"]
 
-    edges = []
-    for rel in raw_rels:
-        edge_data = _rel_to_cytoscape(rel, seen_node_ids)
-        if edge_data:
-            edges.append(edge_data)
+        # Build Cytoscape-compatible output
+        seen_node_ids = set()
+        nodes = []
+        for node in raw_nodes:
+            if len(nodes) >= max_nodes:
+                break
+            node_data = _node_to_cytoscape(node)
+            if node_data["data"]["id"] not in seen_node_ids:
+                seen_node_ids.add(node_data["data"]["id"])
+                nodes.append(node_data)
 
-    return {"center_id": entity_id, "nodes": nodes, "edges": edges}
+        edges = []
+        for rel in raw_rels:
+            edge_data = _rel_to_cytoscape(rel, seen_node_ids)
+            if edge_data:
+                edges.append(edge_data)
+
+        return {"center_id": entity_id, "nodes": nodes, "edges": edges}
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Graph query failed") from exc
 
 
 def _node_to_cytoscape(node) -> dict:
@@ -134,8 +167,10 @@ def _node_to_cytoscape(node) -> dict:
         nid = f"state_{props.get('uf', node.element_id)}"
         nlabel = props.get("uf", "")
     elif "Municipality" in node.labels:
-        nid = f"municipality_{props.get('ibge_code', node.element_id)}"
-        nlabel = props.get("name", "")
+        uf = props.get("uf", "")
+        name = props.get("name", node.element_id)
+        nid = f"municipality_{uf}_{name}"
+        nlabel = name
     else:
         nid = node.element_id
         nlabel = node.element_id
@@ -177,5 +212,7 @@ def _node_id(node) -> str:
     if "State" in node.labels:
         return f"state_{props.get('uf', node.element_id)}"
     if "Municipality" in node.labels:
-        return f"municipality_{props.get('ibge_code', node.element_id)}"
+        uf = props.get("uf", "")
+        name = props.get("name", node.element_id)
+        return f"municipality_{uf}_{name}"
     return node.element_id

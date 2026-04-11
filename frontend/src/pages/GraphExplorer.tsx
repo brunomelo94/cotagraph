@@ -1,10 +1,9 @@
 import { useState, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import { Plus, Minus, Maximize2 } from "lucide-react";
 import { api } from "@/api/client";
 import { GraphCanvas, GraphCanvasHandle } from "@/components/GraphCanvas";
-import { InfoDrawer } from "@/components/InfoDrawer";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import {
@@ -14,16 +13,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { GraphResponse, GraphNode, GraphEdge, SelectedNodeInfo } from "@/api/types";
+import type { GraphResponse } from "@/api/types";
 
 export function GraphExplorer() {
   const { entityId } = useParams<{ entityId: string }>();
+  const navigate = useNavigate();
   const canvasRef = useRef<GraphCanvasHandle>(null);
 
   const [depth, setDepth] = useState(2);
   const [maxNodes, setMaxNodes] = useState(100);
   const [year, setYear] = useState<number | undefined>(undefined);
-  const [selectedNode, setSelectedNode] = useState<SelectedNodeInfo | null>(null);
 
   const { data, isLoading, error } = useQuery<GraphResponse>({
     queryKey: ["graph", entityId, depth, maxNodes, year],
@@ -36,19 +35,11 @@ export function GraphExplorer() {
     enabled: !!entityId,
   });
 
-  const handleNodeSelect = useCallback(
-    (
-      nodeData: GraphNode["data"],
-      allEdges: GraphEdge["data"][],
-      allNodes: GraphNode[]
-    ) => {
-      setSelectedNode((prev) =>
-        prev?.node.id === nodeData.id
-          ? null
-          : { node: nodeData, allEdges, allNodes }
-      );
+  const handleNodeNavigate = useCallback(
+    (clickedEntityId: string) => {
+      navigate(`/graph/${clickedEntityId}`);
     },
-    []
+    [navigate]
   );
 
   const entityType = entityId?.split("_")[0] ?? "";
@@ -183,7 +174,7 @@ export function GraphExplorer() {
             )}
             <span>
               Passe o mouse sobre uma aresta para ver o valor · Clique em um nó
-              para ver detalhes
+              para navegar
             </span>
           </div>
         </div>
@@ -211,16 +202,8 @@ export function GraphExplorer() {
                 nodes={data.nodes}
                 edges={data.edges}
                 centerId={data.center_id}
-                onNodeSelect={handleNodeSelect}
+                onNodeNavigate={handleNodeNavigate}
               />
-              {selectedNode && (
-                <InfoDrawer
-                  node={selectedNode.node}
-                  allEdges={selectedNode.allEdges}
-                  allNodes={selectedNode.allNodes}
-                  onClose={() => setSelectedNode(null)}
-                />
-              )}
             </div>
 
             <Legend />

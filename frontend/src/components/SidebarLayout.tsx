@@ -7,6 +7,7 @@ interface NavItem {
   label: string;
   href: string;
   icon: React.ReactNode;
+  activeFor?: string[];
 }
 
 const navItems: NavItem[] = [
@@ -14,8 +15,9 @@ const navItems: NavItem[] = [
   { label: "Deputados", href: "/deputies", icon: <Users className="size-5" /> },
   {
     label: "Explorar Grafo",
-    href: "/graph",
+    href: "/deputies",
     icon: <Share2 className="size-5" />,
+    activeFor: ["/deputies", "/graph"],
   },
 ];
 
@@ -46,7 +48,9 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
             const isActive =
               item.href === "/"
                 ? pathname === "/"
-                : pathname.startsWith(item.href);
+                : item.activeFor
+                  ? item.activeFor.some((p) => pathname.startsWith(p))
+                  : pathname.startsWith(item.href);
             return (
               <Link
                 key={item.href}

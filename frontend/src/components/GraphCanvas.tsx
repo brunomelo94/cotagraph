@@ -6,11 +6,7 @@ interface Props {
   nodes: GraphNode[];
   edges: GraphEdge[];
   centerId?: string;
-  onNodeSelect?: (
-    nodeData: GraphNode["data"],
-    allEdges: GraphEdge["data"][],
-    allNodes: GraphNode[]
-  ) => void;
+  onNodeNavigate?: (entityId: string) => void;
 }
 
 export interface GraphCanvasHandle {
@@ -38,7 +34,7 @@ const fmtTooltip = (amount: number, year: number | undefined): string => {
 };
 
 export const GraphCanvas = forwardRef<GraphCanvasHandle, Props>(
-  function GraphCanvas({ nodes, edges, centerId, onNodeSelect }, ref) {
+  function GraphCanvas({ nodes, edges, centerId, onNodeNavigate }, ref) {
     const containerRef = useRef<HTMLDivElement>(null);
     const cyRef = useRef<cytoscape.Core | null>(null);
     const tooltipRef = useRef<HTMLDivElement>(null);
@@ -90,13 +86,12 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, Props>(
             selector: `node[type="${type}"]`,
             style: { "background-color": color },
           })),
-          // Deputies: always labeled, slightly larger, 10px font
+          // Deputies: slightly larger, 10px font — labels shown via zoom-medium class
           {
             selector: 'node[type="deputy"]',
             style: {
               width: 26,
               height: 26,
-              "text-opacity": 1,
               "font-size": 10,
             } as cytoscape.Css.Node,
           },
@@ -116,6 +111,11 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, Props>(
                 },
               ]
             : []),
+          // Zoom-based: deputies at zoom >= 1.0
+          {
+            selector: 'node[type="deputy"].zoom-medium',
+            style: { "text-opacity": 1 } as cytoscape.Css.Node,
+          },
           // Zoom-based: beneficiary + municipality at zoom >= 1.5
           {
             selector:
@@ -128,7 +128,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, Props>(
               'node[type="party"].zoom-veryhigh, node[type="state"].zoom-veryhigh',
             style: { "text-opacity": 1 } as cytoscape.Css.Node,
           },
-          // Hide all labels when zoom < 0.6 (overrides deputy always-on)
+          // Hide all labels when zoom < 0.6 (overrides center node always-on)
           {
             selector: "node.zoom-hidden",
             style: { "text-opacity": 0 } as cytoscape.Css.Node,
@@ -215,9 +215,14 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, Props>(
         const allNodes = cy.nodes();
         if (z < 0.6) {
           allNodes.addClass("zoom-hidden");
-          allNodes.removeClass("zoom-high zoom-veryhigh");
+          allNodes.removeClass("zoom-medium zoom-high zoom-veryhigh");
         } else {
           allNodes.removeClass("zoom-hidden");
+          if (z >= 1.0) {
+            allNodes.addClass("zoom-medium");
+          } else {
+            allNodes.removeClass("zoom-medium");
+          }
           if (z >= 1.5) {
             allNodes.addClass("zoom-high");
           } else {
@@ -263,15 +268,11 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, Props>(
         cy.elements().removeClass("dimmed hovered");
       });
 
-      // ── Node tap → info drawer ─────────────────────────────────────────
-      if (onNodeSelect) {
+      // ── Node tap → navigate to entity (Stoplight) ─────────────────────
+      if (onNodeNavigate) {
         cy.on("tap", "node", (evt) => {
           const node = evt.target as cytoscape.NodeSingular;
-          const allCyEdges: GraphEdge["data"][] = [];
-          cy.edges().forEach((e) => {
-            allCyEdges.push(e.data() as GraphEdge["data"]);
-          });
-          onNodeSelect(node.data() as GraphNode["data"], allCyEdges, nodes);
+          onNodeNavigate(node.data("id") as string);
         });
       }
 
@@ -280,7 +281,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, Props>(
         cy.destroy();
         cyRef.current = null;
       };
-    }, [nodes, edges, centerId, onNodeSelect]);
+    }, [nodes, edges, centerId, onNodeNavigate]);
 
     return (
       <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
