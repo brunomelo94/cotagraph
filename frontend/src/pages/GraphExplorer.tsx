@@ -1,13 +1,14 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "@/api/client";
-import { GraphCanvas } from "@/components/GraphCanvas";
+import { GraphCanvas, GraphCanvasHandle } from "@/components/GraphCanvas";
 import type { GraphResponse } from "@/api/types";
 
 export function GraphExplorer() {
   const { entityId } = useParams<{ entityId: string }>();
   const navigate = useNavigate();
+  const canvasRef = useRef<GraphCanvasHandle>(null);
 
   const [depth, setDepth] = useState(2);
   const [maxNodes, setMaxNodes] = useState(100);
@@ -21,53 +22,44 @@ export function GraphExplorer() {
   });
 
   const handleNodeTap = useCallback(
-    (nodeId: string) => {
-      navigate(`/graph/${nodeId}`);
-    },
+    (nodeId: string) => navigate(`/graph/${nodeId}`),
     [navigate]
   );
 
-  const entityLabel = entityId
-    ? entityId.replace(/^(deputy|beneficiary|party|state|municipality)_/, "").toUpperCase()
-    : "";
-
   const entityType = entityId?.split("_")[0] ?? "";
+  const entityKey = entityId?.replace(/^[^_]+_/, "") ?? "";
 
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "2rem 1rem" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: "1.25rem" }}>
+    <div style={{ maxWidth: 1200, margin: "0 auto", padding: "1.5rem 1rem" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: "1rem" }}>
         <Link to="/" style={{ color: "#4f46e5", textDecoration: "none", fontSize: 14 }}>
           ← Início
         </Link>
-        <h1 style={{ fontSize: "1.25rem", fontWeight: 700, margin: 0 }}>
-          Grafo — <span style={{ color: "#4f46e5" }}>{entityType}</span>{" "}
-          <span style={{ fontFamily: "monospace" }}>{entityLabel}</span>
+        <h1 style={{ fontSize: "1.1rem", fontWeight: 700, margin: 0 }}>
+          Grafo —{" "}
+          <span style={{ color: "#64748b", fontWeight: 400 }}>{entityType}</span>{" "}
+          <span style={{ fontFamily: "monospace", color: "#4f46e5" }}>{entityKey}</span>
         </h1>
       </div>
 
-      <div style={{ display: "flex", gap: 16, marginBottom: "1rem", flexWrap: "wrap" }}>
+      {/* Controls row */}
+      <div style={{ display: "flex", gap: 20, marginBottom: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
         <label style={labelStyle}>
-          Profundidade: {depth}
+          Profundidade: <strong>{depth}</strong>
           <input
-            type="range"
-            min={1}
-            max={3}
-            value={depth}
+            type="range" min={1} max={3} value={depth}
             onChange={(e) => setDepth(Number(e.target.value))}
-            style={{ marginLeft: 8, width: 80 }}
+            style={{ marginLeft: 8, width: 70 }}
           />
         </label>
 
         <label style={labelStyle}>
-          Máx. nós: {maxNodes}
+          Máx. nós: <strong>{maxNodes}</strong>
           <input
-            type="range"
-            min={10}
-            max={300}
-            step={10}
-            value={maxNodes}
+            type="range" min={20} max={300} step={10} value={maxNodes}
             onChange={(e) => setMaxNodes(Number(e.target.value))}
-            style={{ marginLeft: 8, width: 100 }}
+            style={{ marginLeft: 8, width: 90 }}
           />
         </label>
 
@@ -84,29 +76,55 @@ export function GraphExplorer() {
             ))}
           </select>
         </label>
+
+        {/* Zoom controls */}
+        <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
+          <button onClick={() => canvasRef.current?.zoomIn()} style={iconBtn} title="Aproximar">+</button>
+          <button onClick={() => canvasRef.current?.zoomOut()} style={iconBtn} title="Afastar">−</button>
+          <button onClick={() => canvasRef.current?.fit()} style={{ ...iconBtn, fontSize: 11, padding: "0 8px" }} title="Ajustar ao ecrã">
+            Fit
+          </button>
+        </div>
       </div>
 
-      {isLoading && <p style={{ color: "#64748b" }}>Carregando grafo...</p>}
+      {/* Status bar */}
+      {data && (
+        <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 8, display: "flex", gap: 16 }}>
+          <span>{data.nodes.length} nós</span>
+          <span>{data.edges.length} arestas</span>
+          {data.nodes.length >= maxNodes && (
+            <span style={{ color: "#f59e0b" }}>
+              limite atingido — aumente Máx. nós para ver mais
+            </span>
+          )}
+          <span style={{ color: "#94a3b8" }}>Passe o mouse sobre um nó para ver o nome · Clique para navegar</span>
+        </div>
+      )}
+
+      {isLoading && (
+        <div style={{ height: 600, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", border: "1px solid #e2e8f0", borderRadius: 8 }}>
+          Carregando grafo...
+        </div>
+      )}
+
       {error && (
-        <p style={{ color: "#ef4444" }}>
+        <div style={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center", color: "#ef4444" }}>
           Entidade não encontrada ou erro ao carregar grafo.
-        </p>
+        </div>
       )}
 
       {data && (
-        <>
-          <div style={{ color: "#64748b", fontSize: 13, marginBottom: 8 }}>
-            {data.nodes.length} nós · {data.edges.length} arestas
-            {data.nodes.length >= maxNodes && (
-              <span style={{ color: "#f59e0b", marginLeft: 8 }}>
-                (limite atingido — aumente "Máx. nós" para ver mais)
-              </span>
-            )}
-          </div>
-          <GraphCanvas nodes={data.nodes} edges={data.edges} onNodeTap={handleNodeTap} />
-          <Legend />
-        </>
+        <GraphCanvas
+          ref={canvasRef}
+          nodes={data.nodes}
+          edges={data.edges}
+          centerId={data.center_id}
+          onNodeTap={handleNodeTap}
+        />
       )}
+
+      {/* Legend */}
+      {data && <Legend />}
     </div>
   );
 }
@@ -120,10 +138,10 @@ function Legend() {
     { color: "#8b5cf6", label: "Município" },
   ];
   return (
-    <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
+    <div style={{ display: "flex", gap: 20, marginTop: 10, flexWrap: "wrap" }}>
       {items.map(({ color, label }) => (
-        <div key={label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
-          <div style={{ width: 12, height: 12, borderRadius: "50%", background: color }} />
+        <div key={label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#64748b" }}>
+          <div style={{ width: 10, height: 10, borderRadius: "50%", background: color, flexShrink: 0 }} />
           {label}
         </div>
       ))}
@@ -131,17 +149,10 @@ function Legend() {
   );
 }
 
-const labelStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  fontSize: 14,
-  color: "#374151",
-};
-
-const selectStyle: React.CSSProperties = {
-  padding: "0.35rem 0.6rem",
-  border: "1px solid #e2e8f0",
-  borderRadius: 6,
-  background: "#fff",
-  fontSize: 14,
+const labelStyle: React.CSSProperties = { display: "flex", alignItems: "center", fontSize: 14, color: "#374151", gap: 0 };
+const selectStyle: React.CSSProperties = { padding: "0.3rem 0.6rem", border: "1px solid #e2e8f0", borderRadius: 6, background: "#fff", fontSize: 14 };
+const iconBtn: React.CSSProperties = {
+  width: 32, height: 32, border: "1px solid #e2e8f0", borderRadius: 6,
+  background: "#fff", cursor: "pointer", fontSize: 16, fontWeight: 700,
+  display: "flex", alignItems: "center", justifyContent: "center",
 };
