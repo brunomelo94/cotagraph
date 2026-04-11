@@ -81,3 +81,9 @@ export interface TopSpendersResponse {
     graph_id: string;
   }>;
 }
+
+export interface SelectedNodeInfo {
+  node: GraphNode["data"];
+  allEdges: GraphEdge["data"][];
+  allNodes: GraphNode[];
+}
