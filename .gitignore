@@ -41,5 +41,8 @@ alembic.ini.local
 *.csv
 !data/.gitkeep
 
+# Brainstorming companion
+.superpowers/
+
 # Logs
 *.log
