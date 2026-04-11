@@ -20,7 +20,7 @@ export function GraphExplorer() {
   const navigate = useNavigate();
   const canvasRef = useRef<GraphCanvasHandle>(null);
 
-  const [depth, setDepth] = useState(2);
+  const [depth, setDepth] = useState(1);
   const [maxNodes, setMaxNodes] = useState(100);
   const [year, setYear] = useState<number | undefined>(undefined);
 

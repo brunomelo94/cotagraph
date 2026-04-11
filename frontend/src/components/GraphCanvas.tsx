@@ -95,27 +95,28 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, Props>(
               "font-size": 10,
             } as cytoscape.Css.Node,
           },
-          // Center/focus node — always labeled, larger, white ring
+          // Center/focus node — always labeled, larger, indigo glow
           ...(centerId
             ? [
                 {
                   selector: `[id = "${centerId}"]`,
                   style: {
-                    width: 36,
-                    height: 36,
-                    "border-width": 3,
+                    width: 46,
+                    height: 46,
+                    "border-width": 4,
                     "border-color": "#ffffff",
                     "text-opacity": 1,
                     "font-size": 13,
+                    "font-weight": 700,
+                    "shadow-blur": 16,
+                    "shadow-color": "#4f46e5",
+                    "shadow-opacity": 0.7,
+                    "shadow-offset-x": 0,
+                    "shadow-offset-y": 0,
                   } as cytoscape.Css.Node,
                 },
               ]
             : []),
-          // Zoom-based: deputies at zoom >= 1.0
-          {
-            selector: 'node[type="deputy"].zoom-medium',
-            style: { "text-opacity": 1 } as cytoscape.Css.Node,
-          },
           // Zoom-based: beneficiary + municipality at zoom >= 1.5
           {
             selector:
@@ -206,8 +207,26 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, Props>(
         cy.edges().forEach((e) => { e.data("weight", 2); });
       }
 
-      // ── Fit after layout ───────────────────────────────────────────────
-      cy.ready(() => cy.fit(undefined, 40));
+      // ── Fit + entrance pulse on center node ───────────────────────────
+      cy.ready(() => {
+        cy.fit(undefined, 40);
+        if (centerId) {
+          const centerNode = cy.getElementById(centerId);
+          centerNode.animate(
+            { style: { "border-width": 10, "border-color": "#a5b4fc", "shadow-opacity": 1 } as cytoscape.Css.Node },
+            {
+              duration: 350,
+              easing: "ease-in-out",
+              complete: () => {
+                centerNode.animate(
+                  { style: { "border-width": 4, "border-color": "#ffffff", "shadow-opacity": 0.7 } as cytoscape.Css.Node },
+                  { duration: 350, easing: "ease-in-out" }
+                );
+              },
+            }
+          );
+        }
+      });
 
       // ── Zoom-based label class toggling ───────────────────────────────
       cy.on("zoom", () => {
@@ -215,14 +234,9 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, Props>(
         const allNodes = cy.nodes();
         if (z < 0.6) {
           allNodes.addClass("zoom-hidden");
-          allNodes.removeClass("zoom-medium zoom-high zoom-veryhigh");
+          allNodes.removeClass("zoom-high zoom-veryhigh");
         } else {
           allNodes.removeClass("zoom-hidden");
-          if (z >= 1.0) {
-            allNodes.addClass("zoom-medium");
-          } else {
-            allNodes.removeClass("zoom-medium");
-          }
           if (z >= 1.5) {
             allNodes.addClass("zoom-high");
           } else {
